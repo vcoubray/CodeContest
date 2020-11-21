@@ -1,3 +1,4 @@
+
 import java.util.*
 import kotlin.collections.HashMap
 
@@ -10,7 +11,7 @@ const val REST = "REST"
 const val OPPONENT_CAST = "OPPONENT_CAST"
 
 //val REST_ACTION = Action(0, "REST", Compos(List(4) { 0 }), 0, -1, 0, true, false)
-val REST_ACTION = Action(0, "REST", Compos(0,0,0,0), 0, -1, 0, true, false)
+val REST_ACTION = Action(0, "REST", Compos(0, 0, 0, 0), 0, -1, 0, true, false)
 
 
 //data class Compos(
@@ -40,14 +41,19 @@ data class Compos(
     private val ing2: Int,
     private val ing3: Int
 ) {
-    operator fun plus(compos: Compos): Compos {
-        return Compos(ing0 + compos.ing0, ing1 + compos.ing1, ing2 + compos.ing2, ing3 + compos.ing3)
-    }
+    operator fun plus(compos: Compos) = Compos(
+        ing0 + compos.ing0,
+        ing1 + compos.ing1,
+        ing2 + compos.ing2,
+        ing3 + compos.ing3
+    )
 
-//    fun dist(target: Compos): Int {
-//        val result = plus(target)
-//        return result.deltas.filter { it < 0 }.sum().unaryMinus()
-//    }
+    operator fun times(factor: Int) = Compos(
+        ing0 * factor,
+        ing1 * factor,
+        ing2 * factor,
+        ing3 * factor
+    )
 
     fun isValid() = when {
         ing0 < 0 -> false
@@ -84,9 +90,9 @@ data class Action(
         repeatable = input.nextInt() != 0
     )
 
-    fun exec() = when (type) {
+    fun exec(times: Int = 1) = when (type) {
         BREW -> "BREW $id"
-        CAST -> "CAST $id"
+        CAST -> "CAST $id $times"
         LEARN -> "LEARN $id"
         REST -> "REST"
         else -> "WAIT"
@@ -94,8 +100,8 @@ data class Action(
 
 }
 
-class Game () {
-    var actions=  mutableListOf<Action>()
+class Game() {
+    var actions = mutableListOf<Action>()
 }
 
 data class Actions(
@@ -119,44 +125,91 @@ data class Inventory(
 ) {
     constructor(input: Scanner) : this(
         //inv = Compos(List<Int>(4) { input.nextInt() }),
-        inv = Compos(input.nextInt(),input.nextInt(),input.nextInt(),input.nextInt()),
+        inv = Compos(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
         score = input.nextInt()
     )
 
 }
+
+data class StateTransition (
+    val action : Action,
+    val newInv : Compos,
+    val times : Int = 1
+){
+    fun exec() = when (action.type) {
+        BREW -> "BREW ${action.id}"
+        CAST -> "CAST ${action.id} $times"
+        LEARN -> "LEARN ${action.id}"
+        REST -> "REST"
+        else -> "WAIT"
+    }
+}
+
 
 data class State(
     val inv: Compos,
     val casts: Map<Int, Boolean>,
     val score: Int,
     val depth: Int = 0,
-    val action: Action? = null
+    val transition: StateTransition? = null
+    //val action: Action? = null
 ) {
     fun isValidAction(action: Action) = when {
         action.type == CAST && !(casts[action.id] ?: false) -> false
         else -> inv.plus(action.deltas).isValid()
     }
 
-    fun transform(action: Action) = when (action.type) {
-        CAST -> cast(action)
-        BREW -> brew(action)
-        LEARN -> learn(action)
+    fun transform(transition: StateTransition) = when (transition.action.type) {
+        CAST -> cast(transition)
+        BREW -> brew(transition)
+        LEARN -> learn(transition)
         REST -> rest()
         else -> wait() // SHOULD NOT HAPPEND
     }
 
-    private fun rest() = State(inv, casts.map { it.key to true }.toMap(), score, depth + 1, null)
-    private fun cast(spell: Action): State {
+    private fun rest() = State(inv, casts.map { it.key to true }.toMap(), score, depth + 1, StateTransition(REST_ACTION,inv))
+    private fun cast(spell: StateTransition): State {
         val newCasts = casts.toMutableMap()
-        newCasts[spell.id] = false
-        return State(inv + spell.deltas, newCasts, this.score, depth + 1, spell)
+        newCasts[spell.action.id] = false
+        return State(spell.newInv, newCasts, this.score, depth + 1, spell)
     }
 
-    private fun learn(learn: Action) = State(inv, casts, score, depth + 1, learn)
-    private fun brew(brew: Action) = State(this.inv + brew.deltas, casts, this.score + brew.price, depth + 1, brew)
+    private fun learn(learn: StateTransition) = State(learn.newInv, casts, score, depth + 1,learn)
+    private fun brew(brew: StateTransition) = State(brew.newInv, casts, this.score + brew.action.price, depth + 1, brew)
     private fun wait() = this.copy()
 
-    fun children(actions: List<Action>): List <State> = actions.filter(::isValidAction).map(::transform)
+    //fun children(actions: List<Action>): List<State> = actions.filter(::isValidAction).map(::transform)
+
+    fun children(actions: List<Action>): List<State> =possibleTransitions(actions).map(::transform)
+
+    fun possibleTransitions(actions:List<Action>) :List<StateTransition> {
+        val transitions = mutableListOf<StateTransition>()
+        actions.forEach{
+
+            if (it.type == CAST && casts[it.id] == true)   {
+                var newInv = inv + it.deltas
+                if( newInv.isValid()) {
+                    transitions.add(StateTransition(it,newInv))
+                }
+
+                if (it.repeatable) {
+                    var times = 2
+                    newInv += it.deltas
+                    while ( newInv.isValid() ){
+                        transitions.add(StateTransition(it, newInv, times))
+                        newInv += it.deltas
+                        times++
+                    }
+                }
+            }
+            if (it.type != CAST){
+                val newInv = inv + it.deltas
+                if (newInv.isValid()) transitions.add(StateTransition(it, newInv))
+            }
+
+        }
+        return transitions
+    }
 
     override fun hashCode(): Int {
         var result = inv.hashCode()
@@ -185,12 +238,11 @@ data class State(
 }
 
 
-
 object BFSOptions {
-    val availableActions : MutableList<Action> = mutableListOf()
-    val visited: HashMap<State,State?> = HashMap(50000)
+    val availableActions: MutableList<Action> = mutableListOf()
+    val visited: HashMap<State, State?> = HashMap(50000)
     val toVisit: LinkedList<State> = LinkedList()
-    val possibleBrews : MutableList<State> = mutableListOf()
+    val possibleBrews: MutableList<State> = mutableListOf()
 
 
 //    fun findRootAction(state: State, depth: Int = 1): Action? {
@@ -209,7 +261,7 @@ object BFSOptions {
 
 }
 
-fun BFS(root: State, actions: List<Action>, timeout: Int = 20): Action {
+fun BFS(root: State, actions: List<Action>, timeout: Int = 20): StateTransition {
 
     val depthMap = MutableList(100) { 0 }
     // val toVisit = ArrayDeque<State>()
@@ -229,7 +281,7 @@ fun BFS(root: State, actions: List<Action>, timeout: Int = 20): Action {
         current.children(actions)
             .forEach {
                 if (visited[it] == null) {
-                    if (it.action?.type == BREW) result.add(it)
+                    if (it.transition?.action?.type == BREW) result.add(it)
                     //else {
                     toVisit.add(it)
                     //}
@@ -243,27 +295,27 @@ fun BFS(root: State, actions: List<Action>, timeout: Int = 20): Action {
 
 
 
-    return findBestBrew(result,visited )
+    return findBestBrew(result, visited)
 }
 
 
-fun findRootAction(state: State, visited: HashMap<State,State?>, depth: Int = 1): Action? {
+fun findRootAction(state: State, visited: HashMap<State, State?>, depth: Int = 1): StateTransition? {
     var current = state
     while (current.depth > depth) {
         current = visited[current]!!
     }
-    return current.action
+    return current.transition
 }
 
-fun findBestBrew(possibleBrews : List<State>, visited: HashMap<State,State?>): Action {
-    return possibleBrews.maxBy { it.score / it.depth }
-        ?.let{findRootAction(it,visited)}
-        ?:REST_ACTION
+fun findBestBrew(possibleBrews: List<State>, visited: HashMap<State, State?>): StateTransition {
+    return possibleBrews.maxWith (compareBy({ it.score.toDouble() / it.depth},{it.score}) )
+        ?.let { findRootAction(it, visited) }
+        ?: StateTransition(REST_ACTION,REST_ACTION.deltas)
 }
 
-fun learnScore(learn : Action, spells: List<Action>){
+fun learnScore(learn: Action, spells: List<Action>) {
     val cost = learn.taxCount - learn.tomeIndex
-    val actualDiff = spells.map{it.deltas}.reduce{sum, it -> sum + it }
+    val actualDiff = spells.map { it.deltas }.reduce { sum, it -> sum + it }
     val learnDiff = actualDiff + learn.deltas
 
     //actualDiff.
