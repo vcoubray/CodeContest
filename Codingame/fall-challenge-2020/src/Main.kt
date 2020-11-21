@@ -1,7 +1,6 @@
 
 import java.util.*
 import kotlin.collections.HashMap
-import kotlin.math.max
 import kotlin.math.min
 
 fun log(message: String) = System.err.println(message)
@@ -12,29 +11,10 @@ const val LEARN = "LEARN"
 const val REST = "REST"
 const val OPPONENT_CAST = "OPPONENT_CAST"
 
-//val REST_ACTION = Action(0, "REST", Compos(List(4) { 0 }), 0, -1, 0, true, false)
-val REST_ACTION = Action(0, "REST", Compos(0, 0, 0, 0), 0, -1, 0, true, false)
+val REST_ACTION = Action(-1, "REST", Compos(0, 0, 0, 0), 0, -1, 0, true, false)
 
 
-//data class Compos(
-//    private val deltas: List<Int>
-//) {
-//    operator fun plus(compos: Compos): Compos {
-//        return this.deltas.mapIndexed { i, delta -> delta + compos.deltas[i] }.let { Compos(it) }
-//    }
-//
-////    fun dist(target: Compos): Int {
-////        val result = plus(target)
-////        return result.deltas.filter { it < 0 }.sum().unaryMinus()
-////    }
-//
-//    fun isValid() = when {
-//        deltas.any { it < 0 } -> false
-//        deltas.sum() > 10 -> false
-//        else -> true
-//    }
-//
-//}
+
 
 
 data class Compos(
@@ -50,13 +30,6 @@ data class Compos(
         ing3 + compos.ing3
     )
 
-//    operator fun times(factor: Int) = Compos(
-//        ing0 * factor,
-//        ing1 * factor,
-//        ing2 * factor,
-//        ing3 * factor
-//    )
-
     fun isValid() = when {
         ing0 < 0 -> false
         ing1 < 0 -> false
@@ -67,10 +40,8 @@ data class Compos(
     }
 
     fun sum() = ing0 + ing1 + ing2 + ing3
-
     fun hasEnoughIng0(ing : Int) = this.ing0 >= ing
 
-    fun canLearn(action: Action) = action.type == LEARN && action.tomeIndex <= ing0
 }
 
 
@@ -87,7 +58,6 @@ data class Action(
     constructor(input: Scanner) : this(
         id = input.nextInt(),
         type = input.next(),
-        //deltas = Compos(List<Int>(4) { input.nextInt() }),
         deltas = Compos(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
         price = input.nextInt(),
         tomeIndex = input.nextInt(),
@@ -130,7 +100,6 @@ data class Inventory(
     val score: Int
 ) {
     constructor(input: Scanner) : this(
-        //inv = Compos(List<Int>(4) { input.nextInt() }),
         inv = Compos(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
         score = input.nextInt()
     )
@@ -155,15 +124,11 @@ data class StateTransition (
 data class State(
     val inv: Compos,
     val casts: Map<Int, Boolean>,
+    //val otherAction:
     val score: Int,
     val depth: Int = 0,
     val transition: StateTransition? = null
-    //val action: Action? = null
 ) {
-    fun isValidAction(action: Action) = when {
-        action.type == CAST && !(casts[action.id] ?: false) -> false
-        else -> inv.plus(action.deltas).isValid()
-    }
 
     fun transform(transition: StateTransition) = when (transition.action.type) {
         CAST -> cast(transition)
@@ -180,45 +145,43 @@ data class State(
         return State(spell.newInv, newCasts, this.score, depth + 1, spell)
     }
 
-    private fun learn(learn: StateTransition) = State(learn.newInv, casts, score, depth + 1,learn)
+    private fun learn(learn: StateTransition) = State(learn.newInv, casts+(learn.action.id to true), score, depth + 1,learn)
     private fun brew(brew: StateTransition) = State(brew.newInv, casts, this.score + brew.action.price, depth + 1, brew)
     private fun wait() = this.copy()
-
-    //fun children(actions: List<Action>): List<State> = actions.filter(::isValidAction).map(::transform)
 
     fun children(actions: List<Action>): List<State> =possibleTransitions(actions).map(::transform)
 
     fun possibleTransitions(actions:List<Action>) :List<StateTransition> {
         val transitions = mutableListOf<StateTransition>()
         actions.forEach{
+            when {
+                casts[it.id] == true ->  {
+                    var newInv = inv + it.deltas
+                    if( newInv.isValid()) {
+                        transitions.add(StateTransition(it,newInv))
+                    }
 
-            if (it.type == CAST && casts[it.id] == true)   {
-                var newInv = inv + it.deltas
-                if( newInv.isValid()) {
-                    transitions.add(StateTransition(it,newInv))
-                }
-
-                if (it.repeatable) {
-                    var times = 2
-                    newInv += it.deltas
-                    while ( newInv.isValid() ){
-                        transitions.add(StateTransition(it, newInv, times))
+                    if (it.repeatable) {
+                        var times = 2
                         newInv += it.deltas
-                        times++
+                        while ( newInv.isValid() ){
+                            transitions.add(StateTransition(it, newInv, times))
+                            newInv += it.deltas
+                            times++
+                        }
                     }
                 }
-            }
-            if( it.type == LEARN) {
-                if(inv.hasEnoughIng0( it.tomeIndex)) {
-                    val gain = min(10-inv.sum() , it.taxCount - it.tomeIndex  )
-                    val newInv = inv + Compos(gain,0,0,0)
-                    transitions.add(StateTransition(it, newInv))
+                it.type == LEARN  -> {
+                    if (inv.hasEnoughIng0(it.tomeIndex)) {
+                        val gain = min(10 - inv.sum(), it.taxCount - it.tomeIndex)
+                        val newInv = inv + Compos(gain, 0, 0, 0)
+                        transitions.add(StateTransition(it, newInv))
+                    }
                 }
-
-            }
-            if (it.type != CAST && it.type != LEARN){
-                val newInv = inv + it.deltas
-                if (newInv.isValid()) transitions.add(StateTransition(it, newInv))
+                it.type == BREW || it.type == REST -> {
+                    val newInv = inv + it.deltas
+                    if (newInv.isValid()) transitions.add(StateTransition(it, newInv))
+                }
             }
 
         }
@@ -232,22 +195,11 @@ data class State(
         return result
     }
 
-//
-//    fun findRootAction(depth: Int = 1): Action? {
-//        var state = this
-//        while (state.depth > depth) {
-//            state = state.parent!!
-//        }
-//        return state.action
-//    }
-
-    override fun equals(other: Any?) =
-        when {
-            this === other -> true
-            other is State -> (inv == other.inv) && (casts == other.casts) && (score == other.score)
-            else -> false
-        }
-
+    override fun equals(other: Any?) = when {
+        this === other -> true
+        other is State -> (inv == other.inv) && (casts == other.casts) && (score == other.score)
+        else -> false
+    }
 
 }
 
@@ -296,9 +248,7 @@ fun BFS(root: State, actions: List<Action>, timeout: Int = 20): StateTransition 
             .forEach {
                 if (visited[it] == null) {
                     if (it.transition?.action?.type == BREW) result.add(it)
-                    //else {
                     toVisit.add(it)
-                    //}
                     visited[it] = current
                 }
             }
@@ -341,10 +291,8 @@ fun main() {
 
     var maxIter = 0
     repeat(100) { turn ->
-        // while (true) {
         val start = System.currentTimeMillis()
         val actionCount = input.nextInt() // the number of spells and recipes in play
-
 
         val actions = List(actionCount) { Action(input) }.toActions()
         val availableActions = actions.cast + actions.brew + actions.learn + REST_ACTION
@@ -357,6 +305,8 @@ fun main() {
         val start2 = System.currentTimeMillis()
 
         val casts = actions.cast.map { it.id to it.castable }.toMap()
+        log("$casts")
+
         val root = State(myInventory.inv, casts, myInventory.score)
 
         log("init in ${System.currentTimeMillis() - start2}ms")
@@ -365,19 +315,15 @@ fun main() {
 
             val learn = actions.learn.sortedBy { it.tomeIndex }.firstOrNull()!!
 
-
             val results = BFS(root, availableActions, bfsTimeout)
             log("end BFS in ${System.currentTimeMillis() - start2}ms - max Iter = $maxIter")
+            log("${results.exec()}")
             println(learn.exec())
 
         } else {
 
             val action = BFS(root, availableActions, bfsTimeout)
             log("end BFS in ${System.currentTimeMillis() - start2}ms - max Iter = $maxIter")
-            //log("results count: ${results.size}")
-//            val action = results.maxBy { it.score / it.depth }?.findRootAction()
-//                ?: root.children(actions.cast).firstOrNull()?.action
-//                ?: REST_ACTION
             println(action.exec())
         }
         log("end in ${System.currentTimeMillis() - start2}ms")
