@@ -1,6 +1,8 @@
 
 import java.util.*
 import kotlin.collections.HashMap
+import kotlin.math.max
+import kotlin.math.min
 
 fun log(message: String) = System.err.println(message)
 
@@ -48,21 +50,25 @@ data class Compos(
         ing3 + compos.ing3
     )
 
-    operator fun times(factor: Int) = Compos(
-        ing0 * factor,
-        ing1 * factor,
-        ing2 * factor,
-        ing3 * factor
-    )
+//    operator fun times(factor: Int) = Compos(
+//        ing0 * factor,
+//        ing1 * factor,
+//        ing2 * factor,
+//        ing3 * factor
+//    )
 
     fun isValid() = when {
         ing0 < 0 -> false
         ing1 < 0 -> false
         ing2 < 0 -> false
         ing3 < 0 -> false
-        ing0 + ing1 + ing2 + ing3 > 10 -> false
+        sum() > 10 -> false
         else -> true
     }
+
+    fun sum() = ing0 + ing1 + ing2 + ing3
+
+    fun hasEnoughIng0(ing : Int) = this.ing0 >= ing
 
     fun canLearn(action: Action) = action.type == LEARN && action.tomeIndex <= ing0
 }
@@ -202,7 +208,15 @@ data class State(
                     }
                 }
             }
-            if (it.type != CAST){
+            if( it.type == LEARN) {
+                if(inv.hasEnoughIng0( it.tomeIndex)) {
+                    val gain = min(10-inv.sum() , it.taxCount - it.tomeIndex  )
+                    val newInv = inv + Compos(gain,0,0,0)
+                    transitions.add(StateTransition(it, newInv))
+                }
+
+            }
+            if (it.type != CAST && it.type != LEARN){
                 val newInv = inv + it.deltas
                 if (newInv.isValid()) transitions.add(StateTransition(it, newInv))
             }
@@ -333,9 +347,9 @@ fun main() {
 
 
         val actions = List(actionCount) { Action(input) }.toActions()
-        val availableActions = actions.cast + actions.brew + /*actions.learn +*/ REST_ACTION
+        val availableActions = actions.cast + actions.brew + actions.learn + REST_ACTION
 
-        val bfsTimeout = if (turn == 0) 800 else 15
+        val bfsTimeout = if (turn == 0) 800 else 17
 
         val myInventory = Inventory(input)
         val oppInventory = Inventory(input)
