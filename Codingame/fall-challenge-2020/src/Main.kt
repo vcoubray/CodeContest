@@ -10,15 +10,15 @@ const val LEARN = "LEARN"
 const val REST = "REST"
 const val OPPONENT_CAST = "OPPONENT_CAST"
 
-val REST_ACTION = Action(-1, "REST", Compos(0, 0, 0, 0), 0, -1, 0, true, false)
+val REST_ACTION = Action(-1, "REST", Ingredients(0, 0, 0, 0), 0, -1, 0, true, false)
 
-data class Compos(
+data class Ingredients(
     private val ing0: Int,
     private val ing1: Int,
     private val ing2: Int,
     private val ing3: Int
 ) {
-    operator fun plus(compos: Compos) = Compos(
+    operator fun plus(compos: Ingredients) = Ingredients(
         ing0 + compos.ing0,
         ing1 + compos.ing1,
         ing2 + compos.ing2,
@@ -59,7 +59,7 @@ data class Compos(
 data class Action(
     val id: Int,
     val type: String,
-    val deltas: Compos,
+    val deltas: Ingredients,
     val price: Int,
     val tomeIndex: Int,
     val taxCount: Int,
@@ -69,7 +69,7 @@ data class Action(
     constructor(input: Scanner) : this(
         id = input.nextInt(),
         type = input.next(),
-        deltas = Compos(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
+        deltas = Ingredients(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
         price = input.nextInt(),
         tomeIndex = input.nextInt(),
         taxCount = input.nextInt(),
@@ -89,8 +89,8 @@ data class Action(
 
 object Game {
     var actions = listOf<Action>()
-    var myInventory = Inventory(Compos(0, 0, 0, 0), 0)
-    var oppInventory = Inventory(Compos(0, 0, 0, 0), 0)
+    var myInventory = Inventory(Ingredients(0, 0, 0, 0), 0)
+    var oppInventory = Inventory(Ingredients(0, 0, 0, 0), 0)
     var hasChange = false
 
     var brews = listOf<Action>()
@@ -143,11 +143,11 @@ fun List<Action>.toActions() = Actions(
 
 
 data class Inventory(
-    val inv: Compos,
+    val inv: Ingredients,
     val score: Int
 ) {
     constructor(input: Scanner) : this(
-        inv = Compos(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
+        inv = Ingredients(input.nextInt(), input.nextInt(), input.nextInt(), input.nextInt()),
         score = input.nextInt()
     )
 
@@ -155,7 +155,7 @@ data class Inventory(
 
 data class StateTransition(
     val action: Action,
-    val newInv: Compos,
+    val newInv: Ingredients,
     val times: Int = 1
 ) {
     fun exec() = when (action.type) {
@@ -167,47 +167,64 @@ data class StateTransition(
     }
 }
 
+//data class StateHashcode(
+//    val inv: Ingredients,
+//    val score: Int,
+//    val casts: Map<Int, Boolean>
+//    )
 
-data class State(
-    val inv: Compos,
+class State(
+    val inv: Ingredients,
     val casts: Map<Int, Boolean>,
-    val brews: MutableMap<Int, Boolean>,
-    val learns: MutableMap<Int, Boolean>,
+    val brews: Map<Int, Boolean>,
+    val learns: Map<Int, Boolean>,
     val score: Int,
     val depth: Int = 0,
-    val transition: StateTransition? = null
+    val transition: StateTransition? = null,
+    val parent: State? = null,
+    var children : List<State>? = null
 ) {
+    val hash = hashCode()
 
     fun transform(transition: StateTransition) = when (transition.action.type) {
         CAST -> cast(transition)
         BREW -> brew(transition)
         LEARN -> learn(transition)
         REST -> rest()
-        else -> rest() // SHOULD NOT HAPPEND
+        else -> rest() // SHOULD NOT HAPPEN !
     }
 
-    private fun rest() = State(inv, casts.map { it.key to true }.toMap(), brews, learns, score, depth + 1, StateTransition(REST_ACTION, inv))
+    private fun rest() = State(inv, casts.map { it.key to true }.toMap(), brews, learns, score, depth + 1, StateTransition(REST_ACTION, inv),this)
     private fun cast(spell: StateTransition): State {
         val newCasts = casts.toMutableMap()
         newCasts[spell.action.id] = false
-        return State(spell.newInv, newCasts, brews, learns, this.score, depth + 1, spell)
+        return State(spell.newInv, newCasts, brews, learns, this.score, depth + 1, spell,this)
     }
 
     private fun learn(learn: StateTransition): State {
-        val newLearns = learns.apply { this.remove(learn.action.id) }
-        val newCasts = casts.toMutableMap().apply { this[learn.action.id] = true }
-        return State(learn.newInv, newCasts, brews, newLearns, score, depth + 1, learn)
+        val newLearns = learns.toMutableMap()
+        newLearns.remove(learn.action.id)
+        val newCasts = casts.toMutableMap()
+        newCasts[learn.action.id] = true
+        return State(learn.newInv, newCasts , brews,  newLearns, score, depth + 1, learn,this)
     }
 
     private fun brew(brew: StateTransition): State {
-        val newBrews = brews.apply { this.remove(brew.action.id) }
-        return State(brew.newInv, casts, newBrews, learns, this.score + brew.action.price, depth + 1, brew)
+        val newBrews = brews.toMutableMap()
+        newBrews.remove(brew.action.id)
+        return State(brew.newInv, casts, newBrews, learns, this.score + brew.action.price, depth + 1, brew,this)
     }
 
 
-    fun children(actions: List<Action>): List<State> = possibleTransitions(actions).map(::transform)
+    fun children(actions: List<Action>): List<State> {
+//        if (children == null ) {
+//            children = possibleTransitions(actions).map(::transform)
+//        }
+//        return children!!
 
-    fun possibleTransitions(actions: List<Action>): List<StateTransition> {
+        return possibleTransitions(actions).map(::transform)
+    }
+    private fun possibleTransitions(actions: List<Action>): List<StateTransition> {
         val transitions = mutableListOf<StateTransition>()
         actions.forEach {
             when {
@@ -230,7 +247,7 @@ data class State(
                 learns[it.id] == true -> {
                     if (inv.canAfford(it.tomeIndex)) {
                         val gain = min(10 - inv.sum(), it.taxCount - it.tomeIndex)
-                        val newInv = inv + Compos(gain, 0, 0, 0)
+                        val newInv = inv + Ingredients(gain, 0, 0, 0)
                         transitions.add(StateTransition(it, newInv))
                     }
                 }
@@ -247,7 +264,7 @@ data class State(
     override fun hashCode(): Int {
         var result = inv.hashCode()
         result = 31 * result + casts.hashCode()
-        result = 31 * result + score
+        result = 53 * result + score
         return result
     }
 
@@ -262,10 +279,8 @@ data class State(
 
 object BFS {
     val availableActions: MutableList<Action> = mutableListOf()
-    val visited: HashMap<State, State?> = HashMap(50000)
-    val toVisit = ArrayDeque<State>(5000)
-
-    //val toVisit: LinkedList<State> = LinkedList()
+    val visited: HashMap<Int, Boolean> = HashMap(200000)
+    val toVisit: LinkedList<State> = LinkedList()
     val possibleBrews: MutableList<State> = mutableListOf()
 
     fun reset() {
@@ -279,32 +294,29 @@ object BFS {
 
 
     fun explore(root: State, actions: List<Action>, timeout: Int = 20): BFSSummary {
+        val start = System.currentTimeMillis()
         val summary = BFSSummary()
         summary.timeout = timeout
 
-        val start = System.currentTimeMillis()
-        log("start init BFS")
 
         toVisit.add(root)
-        visited[root] = null
-        var depthSummary = DepthSummary(root.depth,System.currentTimeMillis(),1)
+        visited[root.hash] = true
+
+        var depthSummary = DepthSummary(root.depth,System.currentTimeMillis(),0,1)
         summary.depths.add(depthSummary)
-        val end = start + timeout;
+        val end = start + timeout
 
-        log("End init BFS: ${System.currentTimeMillis() - start} ms ")
-        log("start BFS : ${System.currentTimeMillis() - start} ms ")
-
-        while (toVisit.isNotEmpty() && System.currentTimeMillis() < end) {
+        while (toVisit.isNotEmpty() && System.currentTimeMillis() < end ) {
             val current = toVisit.removeFirst()
 
-            summary.nodes++
             current.children(actions)
                 .forEach {
-                    if (visited[it] == null) {
+                    if (System.currentTimeMillis() >= end) return@forEach
+
+                    if (visited[it.hash] == null) {
                         if (it.transition?.action?.type == BREW) possibleBrews.add(it)
                         toVisit.add(it)
-                        visited[it] = current
-
+                        visited[it.hash] = true
 
                         summary.nodes++
                         if(it.depth == depthSummary.depth) {
@@ -314,10 +326,13 @@ object BFS {
                             depthSummary = DepthSummary(it.depth,System.currentTimeMillis(),0,1)
                             summary.depths.add(depthSummary)
                         }
+
                     }
                 }
 
         }
+        log("End while: ${System.currentTimeMillis() - start}ms")
+        log("possible brews : ${possibleBrews.size}")
         depthSummary.endTime = System.currentTimeMillis()
         summary.executionTime = System.currentTimeMillis() - start
         return summary
@@ -327,7 +342,7 @@ object BFS {
     fun findRootAction(state: State, depth: Int = 1): StateTransition? {
         var current = state
         while (current.depth > depth) {
-            current = visited[current]!!
+            current = current.parent!!
         }
         return current.transition
     }
@@ -337,8 +352,6 @@ object BFS {
             ?.let { findRootAction(it) }
             ?: StateTransition(REST_ACTION, REST_ACTION.deltas)
     }
-
-
 
 }
 
@@ -350,7 +363,7 @@ class BFSSummary(
 ) {
 
     override fun toString(): String {
-        var message = "BFS process $nodes in ${executionTime}ms for a timeout of ${timeout}ms"
+        val message = "BFS process $nodes in ${executionTime}ms for a timeout of ${timeout}ms"
         return message + "\n" + depths.joinToString("\n")
     }
 
@@ -369,78 +382,30 @@ class DepthSummary(
 }
 
 
-//fun BFS(root: State, actions: List<Action>, timeout: Int = 20): StateTransition {
-//    val start = System.currentTimeMillis()
-//    log("start init BFS")
-//    val depthMap = MutableList(100) { 0 }
-//     val toVisit = ArrayDeque<State>(5000)
-//    //val toVisit = LinkedList<State>()
-//    val visited = HashMap<State, State?>(50000)
-//    val result = mutableListOf<State>()
-//
-//    toVisit.add(root)
-//    visited[root] = null
-//    val end = start + timeout;
-//    var i = 0
-//    log("End init BFS: ${System.currentTimeMillis() - start} ms ")
-//
-//    log("start BFS : ${System.currentTimeMillis() - start} ms ")
-//    while (toVisit.isNotEmpty() && System.currentTimeMillis() < end) {
-//        val current = toVisit.removeFirst()
-//        depthMap[current.depth]++
-//        current.children(actions)
-//            .forEach {
-//                if (visited[it] == null) {
-//                    if (it.transition?.action?.type == BREW) result.add(it)
-//                    toVisit.add(it)
-//                    visited[it] = current
-//                }
-//            }
-//        i++
-//    }
-//    log("process $i elements in ${System.currentTimeMillis() - start} ms")
-//    log("$depthMap")
-//
-//
-//
-//    return findBestBrew(result, visited)
-//}
-
-
-
-
 fun main() {
     val input = Scanner(System.`in`)
 
-    var maxIter = 0
     repeat(100) { turn ->
 
-        val start = System.currentTimeMillis()
-        BFS.reset()
+        val startReading = System.currentTimeMillis()
         Game.update(input)
-        log("hasChanger : ${Game.hasChange}")
-        log("read input in ${System.currentTimeMillis() - start}ms")
-//        val actionCount = input.nextInt() // the number of spells and recipes in play
-//
-//        val actions = List(actionCount) { Action(input) }.toActions()
-        val availableActions = Game.casts + Game.brews /*+ actions.learn*/ + REST_ACTION
+        log("read input in ${System.currentTimeMillis() - startReading}ms")
 
+        val start = System.currentTimeMillis()
 
-//
-//        val myInventory = Inventory(input)
-//        val oppInventory = Inventory(input)
-        val bfsTimeout = if (turn == 0) 800 else 17
+        BFS.reset()
 
-        val start2 = System.currentTimeMillis()
+        val availableActions = Game.casts + Game.brews /*+ Game.learns*/ + REST_ACTION
+
+        val bfsTimeout = if (turn == 0) 800 else 15
 
         val casts = Game.casts.map { it.id to it.castable }.toMap()
         val brews = Game.brews.map { it.id to true }.toMap().toMutableMap()
         val learns = Game.learns.map { it.id to true }.toMap().toMutableMap()
-        log("$casts")
 
         val root = State(Game.myInventory.inv, casts, brews, learns, Game.myInventory.score)
 
-        log("init in ${System.currentTimeMillis() - start2}ms")
+        log("init in ${System.currentTimeMillis() - start}ms")
 
         if (turn < 6) {
 
@@ -458,18 +423,17 @@ fun main() {
             val learn = possibleLearn.firstOrNull()!!.first
 
             val summary = BFS.explore(root, availableActions, bfsTimeout)
-            log("$summary")
-            val action = BFS.findBestBrew()
-            log(action.exec())
+           // log("$summary")
             println(learn.exec())
 
         } else {
 
             val summary = BFS.explore(root, availableActions, bfsTimeout)
-            log("$summary")
+            //log("$summary")
             val action = BFS.findBestBrew()
+            log("End turn in ${System.currentTimeMillis() - start}ms")
             println(action.exec())
         }
-        log("End turn in ${System.currentTimeMillis() - start2}ms")
+
     }
 }
