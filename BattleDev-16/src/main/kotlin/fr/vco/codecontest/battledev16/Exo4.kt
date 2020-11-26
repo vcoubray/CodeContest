@@ -6,23 +6,24 @@ object Exo4 {
     fun main() {
 
         val input = generateSequence(::readLine).toList()
-        val (n,m) = input[0].split(" ").map{it.toInt()}
-        val key = input[1].split(" ").map{it.toInt()}
-        val messages = input.subList(2,input.size)
+        val (n, m) = input[0].split(" ").map { it.toInt() }
+        val key = input[1].split(" ").map { it.toInt() }
+        val messages = input.subList(2, input.size)
 
-        val result = MutableList(256){0}
-
-
-
-        messages.forEach{m ->
-            val (l,r) = m.split(" ").map{it.toInt()}
-            var i = key[l]
-            for (j in l+1..r){
-                i= i.xor(key[j])
-            }
-            //val i = key.subList(l,r+1).reduce{a,b->a.xor(b)}
+        val cache = mutableListOf<Int>()
+        key.forEachIndexed { i, k ->
+            if (i == 0) cache.add(k)
+            else cache.add(cache[i - 1] xor k)
         }
-        println(result.joinToString (separator=" ") )
+
+        val result = MutableList(256) { 0 }
+        messages.forEach { m ->
+            val (l, r) = m.split(" ").map { it.toInt() }
+            val i = if (l == 0) cache[r]
+            else cache[l - 1] xor cache[r]
+            result[i]++
+        }
+        println(result.joinToString(separator = " "))
     }
 
 }
