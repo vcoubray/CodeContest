@@ -18,7 +18,7 @@ class SampleRunnerTest {
     /**
      * Configure the downloaded zip file location
      */
-    private val zipSamplePath = "download\\sample-aVlqVXJqdzZnbnJEdXJMVDlEMnA2Zz09Ojqgl8NyhOxIq9MdJq32k8IZ.zip"
+    private val zipSamplePath = "download\\sample-cXpLYUdQblJvU0MyTFdNTXp5Z1JUQT09Ojqgl8NyhOxIq9MdJq32k8IZ.zip"
 
     /**
      * File being tested with the Executor wrapper.
