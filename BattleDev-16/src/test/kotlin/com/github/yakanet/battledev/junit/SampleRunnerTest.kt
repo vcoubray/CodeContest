@@ -18,17 +18,17 @@ class SampleRunnerTest {
     /**
      * Configure the downloaded zip file location
      */
-    private val zipSamplePath = "download\\sample-cXpLYUdQblJvU0MyTFdNTXp5Z1JUQT09Ojqgl8NyhOxIq9MdJq32k8IZ.zip"
+    private val zipSamplePath = "download\\sample-aDYybko0cXc4bm9GendLNkIwSkJYUT09Ojqgl8NyhOxIq9MdJq32k8IZ.zip"
 
     /**
      * File being tested with the Executor wrapper.
      * You can comment any executor you are not using.
      */
     private val executors = listOf(
-            KotlinExecutor(Exo1::main),
+//            KotlinExecutor(Exo1::main),
 //            KotlinExecutor(Exo2::main),
 //            KotlinExecutor(Exo3::main),
-//            KotlinExecutor(Exo4::main),
+            KotlinExecutor(Exo4::main),
 //            KotlinExecutor(Exo5::main),
 //            KotlinExecutor(Exo6::main),
     )
