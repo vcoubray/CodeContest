@@ -1,4 +1,5 @@
 /.idea/
 **/*.iml
 **/target/
-/BattleDev-17/.mvn/
+**/.mvn/
+**/out
